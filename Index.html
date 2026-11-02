@@ -1,0 +1,309 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#05070d">
+<meta name="description" content="Gerador de frequência com múltiplos osciladores.">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Gerador de Frequência</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg:#05070d; --panel:#101827; --panel2:#172235;
+  --blue:#168cff; --blue2:#0865c5; --white:#f3f7ff;
+  --muted:#91a1b8; --line:#26364d; --red:#ff5268;
+}
+* { box-sizing:border-box; }
+body {
+  margin:0; padding:18px 14px 110px;
+  background:var(--bg); color:var(--white);
+  font-family:Arial,sans-serif;
+}
+header { text-align:center; margin:8px 0 22px; }
+h1 { font-size:25px; margin:0 0 7px; }
+.subtitle { color:var(--muted); font-size:13px; }
+.top-actions { display:flex; gap:9px; margin-bottom:16px; }
+button,input,select { font:inherit; }
+button {
+  border:0; border-radius:12px; padding:12px 14px;
+  color:white; background:var(--blue2); font-weight:700;
+  cursor:pointer; touch-action:manipulation;
+}
+button:active { transform:scale(.98); }
+button.secondary { background:var(--panel2); border:1px solid var(--line); }
+button.stop { background:#48202b; color:#ffdce2; }
+.top-actions button { flex:1; }
+.card {
+  background:var(--panel); border:1px solid var(--line);
+  border-radius:17px; padding:15px; margin-bottom:13px;
+}
+.card-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.card-title { font-weight:700; font-size:16px; }
+.status { font-size:11px; color:var(--muted); }
+.status.on { color:#5bc7ff; }
+.remove { padding:7px 10px; background:#38202b; color:#ffb9c4; }
+.frequency-row { display:flex; gap:8px; align-items:center; margin:17px 0 12px; }
+.frequency-row input {
+  min-width:0; width:100%; padding:12px;
+  background:#080e19; color:white; border:1px solid #30445e;
+  border-radius:10px; font-size:21px; font-weight:700;
+}
+.unit { color:var(--muted); font-size:14px; }
+.control { margin:14px 0; }
+.control-head { display:flex; justify-content:space-between; gap:8px; margin-bottom:8px; font-size:13px; }
+.value { color:#72bdff; font-weight:700; }
+.slider-row { display:flex; align-items:center; gap:10px; }
+.slider-row button { padding:7px 11px; min-width:37px; }
+input[type=range] { flex:1; min-width:0; accent-color:var(--blue); }
+select {
+  width:100%; background:#080e19; color:white;
+  border:1px solid #30445e; padding:11px; border-radius:10px;
+}
+.pan-labels { display:flex; justify-content:space-between; color:var(--muted); font-size:11px; margin-top:5px; }
+.card-actions { display:flex; gap:9px; margin-top:16px; }
+.card-actions button { flex:1; }
+.play { background:var(--blue); border-radius:50px; }
+#add { width:100%; padding:15px; margin:4px 0 15px; background:#142c48; border:1px dashed #348bd5; }
+.floating {
+  position:fixed; bottom:17px; left:14px; right:14px;
+  display:flex; gap:10px; padding:10px;
+  background:#0b1220ee; border:1px solid var(--line);
+  border-radius:17px; backdrop-filter:blur(12px);
+}
+.floating button { flex:1; padding:15px 8px; }
+#message { text-align:center; color:var(--muted); font-size:12px; margin:12px 0; }
+.note { color:var(--muted); font-size:11px; line-height:1.5; text-align:center; margin-top:20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>GERADOR DE FREQUÊNCIA</h1>
+  <div class="subtitle">Múltiplos osciladores de áudio</div>
+</header>
+
+<div class="top-actions">
+  <button onclick="addOscillator()">＋ Novo oscilador</button>
+  <button class="secondary" onclick="stopAll()">■ Parar todos</button>
+</div>
+
+<div id="oscillators"></div>
+<button id="add" onclick="addOscillator()">＋ ADICIONAR OSCILADOR</button>
+<div id="message">Toque em Play para iniciar o áudio.</div>
+
+<div class="floating">
+  <button class="play" onclick="playAll()">▶ PLAY ALL</button>
+  <button class="stop" onclick="stopAll()">■ STOP ALL</button>
+</div>
+
+<div class="note">
+  O som é gerado em tempo real pelo navegador.
+  Use fones ou caixas de áudio e evite volumes elevados.
+</div>
+
+<script>
+"use strict";
+
+let audioContext = null;
+let oscillators = [];
+let nextId = 1;
+
+function getAudioContext() {
+  if (!audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+      alert("Este navegador não oferece suporte à geração de áudio.");
+      throw new Error("Web Audio API indisponível");
+    }
+    audioContext = new AudioContextClass();
+  }
+  if (audioContext.state === "suspended") audioContext.resume();
+  return audioContext;
+}
+
+function addOscillator() {
+  const id = nextId++;
+  oscillators.push({
+    id, frequency:440, volume:50,
+    wave:"sine", pan:0, node:null,
+    gain:null, panner:null
+  });
+  renderOscillators();
+}
+
+function createElement(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+function renderOscillators() {
+  const root = document.getElementById("oscillators");
+  root.replaceChildren();
+
+  oscillators.forEach(item => {
+    const card = createElement("section","card");
+    const head = createElement("div","card-head");
+    const title = createElement("div","card-title","Oscilador "+item.id);
+    const status = createElement("span","status"+(item.node?" on":""),item.node?"● TOCANDO":"● PARADO");
+    const remove = createElement("button","remove","✕");
+    remove.onclick = () => removeOscillator(item.id);
+    head.append(title,status,remove);
+    card.append(head);
+
+    const freqRow = createElement("div","frequency-row");
+    const freq = document.createElement("input");
+    freq.type="number"; freq.min="0.01"; freq.max="20000";
+    freq.step="any"; freq.inputMode="decimal";
+    freq.value=item.frequency;
+    freq.setAttribute("aria-label","Frequência em hertz");
+    freq.onchange=()=>{
+      const value=Number(freq.value);
+      if(Number.isFinite(value)&&value>=0.01&&value<=20000){
+        item.frequency=value;
+        if(item.node) item.node.frequency.setTargetAtTime(value,audioContext.currentTime,.015);
+      } else freq.value=item.frequency;
+    };
+    freqRow.append(freq,createElement("span","unit","Hz"));
+    card.append(freqRow);
+
+    const waveControl=createElement("div","control");
+    waveControl.append(createElement("div","control-head","Forma de onda"));
+    const wave=document.createElement("select");
+    [["sine","Senoidal"],["square","Quadrada"],["sawtooth","Dente de serra"],["triangle","Triangular"]].forEach(([v,l])=>{
+      const option=document.createElement("option");
+      option.value=v; option.textContent=l; wave.append(option);
+    });
+    wave.value=item.wave;
+    wave.onchange=()=>{
+      item.wave=wave.value;
+      if(item.node) item.node.type=item.wave;
+    };
+    waveControl.append(wave);
+    card.append(waveControl);
+
+    const volumeControl=createElement("div","control");
+    const volumeHead=createElement("div","control-head");
+    volumeHead.append(createElement("span","","Volume"));
+    const volumeValue=createElement("span","value",item.volume+"%");
+    volumeHead.append(volumeValue);
+    const volumeRow=createElement("div","slider-row");
+    const volMinus=createElement("button","secondary","−");
+    const vol=document.createElement("input");
+    vol.type="range"; vol.min="0"; vol.max="100"; vol.step="1"; vol.value=item.volume;
+    const volPlus=createElement("button","secondary","+");
+    function setVolume(v){
+      item.volume=Math.max(0,Math.min(100,v));
+      vol.value=item.volume;
+      volumeValue.textContent=item.volume+"%";
+      if(item.gain) item.gain.gain.setTargetAtTime(item.volume/100,audioContext.currentTime,.02);
+    }
+    vol.oninput=()=>setVolume(Number(vol.value));
+    volMinus.onclick=()=>setVolume(item.volume-1);
+    volPlus.onclick=()=>setVolume(item.volume+1);
+    volumeRow.append(volMinus,vol,volPlus);
+    volumeControl.append(volumeHead,volumeRow);
+    card.append(volumeControl);
+
+    const panControl=createElement("div","control");
+    const panHead=createElement("div","control-head");
+    panHead.append(createElement("span","","Pan estéreo"));
+    const panValue=createElement("span","value",
+      item.pan===0?"Centro":item.pan<0?"Esquerda "+Math.abs(item.pan)+"%":"Direita "+item.pan+"%");
+    panHead.append(panValue);
+    const pan=document.createElement("input");
+    pan.type="range"; pan.min="-100"; pan.max="100"; pan.step="1"; pan.value=item.pan;
+    pan.oninput=()=>{
+      item.pan=Number(pan.value);
+      panValue.textContent=item.pan===0?"Centro":
+        item.pan<0?"Esquerda "+Math.abs(item.pan)+"%":"Direita "+item.pan+"%";
+      if(item.panner) item.panner.pan.setTargetAtTime(item.pan/100,audioContext.currentTime,.02);
+    };
+    const labels=createElement("div","pan-labels");
+    labels.append(createElement("span","","L"),createElement("span","","CENTRO"),createElement("span","","R"));
+    panControl.append(panHead,pan,labels);
+    card.append(panControl);
+
+    const actions=createElement("div","card-actions");
+    const play=createElement("button","play",item.node?"▶ Tocando":"▶ Play");
+    play.onclick=()=>item.node?stopOne(item.id):startOne(item.id);
+    const stop=createElement("button","secondary","■ Stop");
+    stop.onclick=()=>stopOne(item.id);
+    actions.append(play,stop);
+    card.append(actions);
+    root.append(card);
+  });
+}
+
+function startOne(id){
+  const item=oscillators.find(o=>o.id===id);
+  if(!item||item.node)return;
+  const ctx=getAudioContext();
+  const osc=ctx.createOscillator();
+  const gain=ctx.createGain();
+  const panner=ctx.createStereoPanner?ctx.createStereoPanner():null;
+  osc.type=item.wave;
+  osc.frequency.value=item.frequency;
+  gain.gain.value=item.volume/100;
+  if(panner){
+    panner.pan.value=item.pan/100;
+    osc.connect(gain);
+    gain.connect(panner);
+    panner.connect(ctx.destination);
+  }else{
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+  }
+  item.node=osc; item.gain=gain; item.panner=panner;
+  osc.onended=()=>{
+    if(item.node===osc){
+      item.node=null; item.gain=null; item.panner=null;
+      renderOscillators();
+    }
+  };
+  osc.start();
+  renderOscillators();
+}
+
+function stopOne(id){
+  const item=oscillators.find(o=>o.id===id);
+  if(!item||!item.node)return;
+  const osc=item.node;
+  try{
+    item.gain.gain.setTargetAtTime(0,audioContext.currentTime,.015);
+    osc.stop(audioContext.currentTime+.07);
+  }catch(e){
+    try{osc.stop();}catch(_){}
+  }
+}
+
+function playAll(){
+  getAudioContext();
+  oscillators.forEach(item=>startOne(item.id));
+}
+
+function stopAll(){
+  oscillators.forEach(item=>stopOne(item.id));
+}
+
+function removeOscillator(id){
+  stopOne(id);
+  oscillators=oscillators.filter(o=>o.id!==id);
+  renderOscillators();
+}
+
+addOscillator();
+
+if("serviceWorker" in navigator && location.protocol.startsWith("http")){
+  window.addEventListener("load",()=>{
+    navigator.serviceWorker.register("./service-worker.js").catch(err=>{
+      console.warn("Não foi possível ativar o modo offline:",err);
+    });
+  });
+}
+</script>
+</body>
+  </html>
+  
