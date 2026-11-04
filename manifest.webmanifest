@@ -1,19 +1,24 @@
-
 {
-  "name": "Gerador de Frequência",
+  "name": "Frequências",
   "short_name": "Frequências",
   "description": "Gerador de áudio com múltiplos osciladores",
   "start_url": "./index.html",
-  "scope": "./",
   "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait",
-  "background_color": "#05070d",
-  "theme_color": "#05070d",
+  "lang": "pt-BR",
   "icons": [
     {
-      "src": "icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "grok_1793834580930.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "grok_1793834584676.png",
+      "sizes": "192x192",
+      "type": "image/png",
       "purpose": "any"
     }
   ]
